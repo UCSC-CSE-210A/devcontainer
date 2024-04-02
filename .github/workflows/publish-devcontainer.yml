@@ -1,0 +1,624 @@
+name: Publish Docker image
+
+on:
+  release:
+    types: [published]
+  push:
+    branches:
+      - main
+    paths:
+      - OpamBase/**
+      - DevContainer/**
+      - RunnerContainer/**
+      - .github/workflows/publish-devcontainer.yml
+
+jobs:
+  build_and_push_opam_base_amd64:
+    name: Build and push Docker image (amd64)
+    runs-on: ubuntu-22.04
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Filter changes
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            src:
+              - 'OpamBase/**'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate package repo name
+        id: ghcr_repo
+        run: echo "path=ghcr.io/${{ github.repository_owner }}/opam-base" | tr '[:upper:]' '[:lower:]' >> $GITHUB_OUTPUT
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ steps.ghcr_repo.outputs.path }}
+
+      - name: Get current commit SHA short
+        id: commit_sha
+        run: echo "short=$(git rev-parse --short HEAD)" | tr '[:upper:]' '[:lower:]' >> $GITHUB_OUTPUT
+
+      - name: Manually generate sha tag
+        id: tag_sha
+        run: echo "tag=${{ steps.ghcr_repo.outputs.path }}:${{ steps.commit_sha.outputs.short }}" >> $GITHUB_OUTPUT
+
+      - name: Manually generate head tag
+        id: tag_head
+        run: echo "tag=${{ steps.ghcr_repo.outputs.path }}:head" >> $GITHUB_OUTPUT
+
+      - name: Manually generate ver tag
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        id: tag_ver
+        run: echo "tag=${{ steps.ghcr_repo.outputs.path }}:${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker images
+        uses: docker/build-push-action@v5
+        if: ${{ !startsWith(github.ref, 'refs/tags/') && steps.changes.outputs.src == 'true' }}
+        with:
+          context: ./OpamBase
+          platforms: linux/amd64
+          build-args: |
+            BASE_IMAGE=ubuntu:22.04
+          push: true
+          tags: |
+            ${{ steps.tag_sha.outputs.tag }}-amd64
+            ${{ steps.tag_head.outputs.tag }}-amd64
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Build and push Docker images (gradescope)
+        uses: docker/build-push-action@v5
+        if: ${{ !startsWith(github.ref, 'refs/tags/') && steps.changes.outputs.src == 'true' }}
+        with:
+          context: ./OpamBase
+          platforms: linux/amd64
+          build-args: |
+            BASE_IMAGE=gradescope/autograder-base:ubuntu-22.04
+          push: true
+          tags: |
+            ${{ steps.tag_sha.outputs.tag }}-gradescope
+            ${{ steps.tag_head.outputs.tag }}-gradescope
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Create and push a manifest with ver referencing latest commit
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          docker buildx imagetools create \
+            -t ${{ steps.tag_ver.outputs.tag }}-amd64 \
+            ${{ steps.tag_head.outputs.tag }}-amd64
+
+      - name: Create and push a manifest with ver referencing latest commit (gradescope)
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          docker buildx imagetools create \
+            -t ${{ steps.tag_ver.outputs.tag }}-gradescope \
+            ${{ steps.tag_head.outputs.tag }}-gradescope
+
+  build_and_push_opam_base_arm64:
+    name: Build and push Docker image (arm64)
+    runs-on: ubuntu-22.04
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Filter changes
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            src:
+              - 'OpamBase/**'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate package repo name
+        id: ghcr_repo
+        run: echo "path=ghcr.io/${{ github.repository_owner }}/opam-base" | tr '[:upper:]' '[:lower:]' >> $GITHUB_OUTPUT
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ steps.ghcr_repo.outputs.path }}
+
+      - name: Get current commit SHA short
+        id: commit_sha
+        run: echo "short=$(git rev-parse --short HEAD)" | tr '[:upper:]' '[:lower:]' >> $GITHUB_OUTPUT
+
+      - name: Manually generate sha tag
+        id: tag_sha
+        run: echo "tag=${{ steps.ghcr_repo.outputs.path }}:${{ steps.commit_sha.outputs.short }}" >> $GITHUB_OUTPUT
+
+      - name: Manually generate head tag
+        id: tag_head
+        run: echo "tag=${{ steps.ghcr_repo.outputs.path }}:head" >> $GITHUB_OUTPUT
+
+      - name: Manually generate ver tag
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        id: tag_ver
+        run: echo "tag=${{ steps.ghcr_repo.outputs.path }}:${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker images
+        uses: docker/build-push-action@v5
+        if: ${{ !startsWith(github.ref, 'refs/tags/') && steps.changes.outputs.src == 'true' }}
+        with:
+          context: ./OpamBase
+          platforms: linux/arm64
+          build-args: |
+            BASE_IMAGE=ubuntu:22.04
+          push: true
+          tags: |
+            ${{ steps.tag_sha.outputs.tag }}-arm64
+            ${{ steps.tag_head.outputs.tag }}-arm64
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Create and push a manifest with ver referencing latest commit
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          docker buildx imagetools create \
+            -t ${{ steps.tag_ver.outputs.tag }}-arm64 \
+            ${{ steps.tag_head.outputs.tag }}-arm64
+
+  build_and_push_opam_base_multi_arch:
+    name: Build and push Docker image (multi-arch)
+    runs-on: ubuntu-22.04
+    needs: [build_and_push_opam_base_amd64, build_and_push_opam_base_arm64]
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Filter changes
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            src:
+              - 'OpamBase/**'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate package repo name
+        id: ghcr_repo
+        run: echo "path=ghcr.io/${{ github.repository_owner }}/opam-base" | tr '[:upper:]' '[:lower:]' >> $GITHUB_OUTPUT
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ steps.ghcr_repo.outputs.path }}
+
+      - name: Get current commit SHA short
+        id: commit_sha
+        run: echo "short=$(git rev-parse --short HEAD)" | tr '[:upper:]' '[:lower:]' >> $GITHUB_OUTPUT
+
+      - name: Manually generate sha tag
+        id: tag_sha
+        run: echo "tag=${{ steps.ghcr_repo.outputs.path }}:${{ steps.commit_sha.outputs.short }}" >> $GITHUB_OUTPUT
+
+      - name: Manually generate head tag
+        id: tag_head
+        run: echo "tag=${{ steps.ghcr_repo.outputs.path }}:head" >> $GITHUB_OUTPUT
+
+      - name: Manually generate latest tag
+        id: tag_latest
+        run: echo "tag=${{ steps.ghcr_repo.outputs.path }}:latest" >> $GITHUB_OUTPUT
+
+      - name: Manually generate ver tag
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        id: tag_ver
+        run: echo "tag=${{ steps.ghcr_repo.outputs.path }}:${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create and push a multi-arch manifest (sha)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') && steps.changes.outputs.src == 'true' }}
+        run: |
+          docker buildx imagetools create \
+            -t ${{ steps.tag_sha.outputs.tag }} \
+            ${{ steps.tag_sha.outputs.tag }}-amd64 \
+            ${{ steps.tag_sha.outputs.tag }}-arm64
+
+      - name: Create and push a multi-arch manifest (head)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') && steps.changes.outputs.src == 'true' }}
+        run: |
+          docker buildx imagetools create \
+            -t ${{ steps.tag_head.outputs.tag }} \
+            ${{ steps.tag_head.outputs.tag }}-amd64 \
+            ${{ steps.tag_head.outputs.tag }}-arm64
+
+      - name: Create and push a multi-arch manifest (tag)
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          docker buildx imagetools create \
+            -t ${{ steps.tag_ver.outputs.tag }} \
+            ${{ steps.tag_ver.outputs.tag }}-amd64 \
+            ${{ steps.tag_ver.outputs.tag }}-arm64
+
+      - name: Create and push a multi-arch manifest (latest)
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          docker buildx imagetools create \
+            -t ${{ steps.tag_latest.outputs.tag }} \
+            ${{ steps.tag_ver.outputs.tag }}
+
+
+
+
+
+  build_and_push_devcontainer_amd64:
+    name: Build and push Docker image devcontainer (amd64)
+    runs-on: ubuntu-22.04
+    needs: [build_and_push_opam_base_amd64]
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Filter changes
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            src:
+              - 'OpamBase/**'
+              - 'DevContainer/**'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate package repo name
+        id: ghcr_repo
+        run: echo "path=ghcr.io/${{ github.repository_owner }}/devcontainer" | tr '[:upper:]' '[:lower:]' >> $GITHUB_OUTPUT
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ steps.ghcr_repo.outputs.path }}
+
+      - name: Get current commit SHA short
+        id: commit_sha
+        run: echo "short=$(git rev-parse --short HEAD)" | tr '[:upper:]' '[:lower:]' >> $GITHUB_OUTPUT
+
+      - name: Manually generate sha tag
+        id: tag_sha
+        run: echo "tag=${{ steps.ghcr_repo.outputs.path }}:${{ steps.commit_sha.outputs.short }}" >> $GITHUB_OUTPUT
+
+      - name: Manually generate head tag
+        id: tag_head
+        run: echo "tag=${{ steps.ghcr_repo.outputs.path }}:head" >> $GITHUB_OUTPUT
+
+      - name: Manually generate ver tag
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        id: tag_ver
+        run: echo "tag=${{ steps.ghcr_repo.outputs.path }}:${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker images
+        uses: docker/build-push-action@v5
+        if: ${{ !startsWith(github.ref, 'refs/tags/') && steps.changes.outputs.src == 'true' }}
+        with:
+          context: ./DevContainer
+          platforms: linux/amd64
+          build-args: |
+            BASE_IMAGE=ghcr.io/ucsc-cse-210a/opam-base:head-amd64
+          push: true
+          tags: |
+            ${{ steps.tag_sha.outputs.tag }}-amd64
+            ${{ steps.tag_head.outputs.tag }}-amd64
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Create and push a manifest with ver referencing latest commit
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          docker buildx imagetools create \
+            -t ${{ steps.tag_ver.outputs.tag }}-amd64 \
+            ${{ steps.tag_head.outputs.tag }}-amd64
+
+  build_and_push_devcontainer_arm64:
+    name: Build and push Docker image devcontainer (arm64)
+    runs-on: ubuntu-22.04
+    needs: [build_and_push_opam_base_arm64]
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Filter changes
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            src:
+              - 'OpamBase/**'
+              - 'DevContainer/**'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate package repo name
+        id: ghcr_repo
+        run: echo "path=ghcr.io/${{ github.repository_owner }}/devcontainer" | tr '[:upper:]' '[:lower:]' >> $GITHUB_OUTPUT
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ steps.ghcr_repo.outputs.path }}
+
+      - name: Get current commit SHA short
+        id: commit_sha
+        run: echo "short=$(git rev-parse --short HEAD)" | tr '[:upper:]' '[:lower:]' >> $GITHUB_OUTPUT
+
+      - name: Manually generate sha tag
+        id: tag_sha
+        run: echo "tag=${{ steps.ghcr_repo.outputs.path }}:${{ steps.commit_sha.outputs.short }}" >> $GITHUB_OUTPUT
+
+      - name: Manually generate head tag
+        id: tag_head
+        run: echo "tag=${{ steps.ghcr_repo.outputs.path }}:head" >> $GITHUB_OUTPUT
+
+      - name: Manually generate ver tag
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        id: tag_ver
+        run: echo "tag=${{ steps.ghcr_repo.outputs.path }}:${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker images
+        uses: docker/build-push-action@v5
+        if: ${{ !startsWith(github.ref, 'refs/tags/') && steps.changes.outputs.src == 'true' }}
+        with:
+          context: ./DevContainer
+          platforms: linux/arm64
+          build-args: |
+            BASE_IMAGE=ghcr.io/ucsc-cse-210a/opam-base:head-arm64
+          push: true
+          tags: |
+            ${{ steps.tag_sha.outputs.tag }}-arm64
+            ${{ steps.tag_head.outputs.tag }}-arm64
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Create and push a manifest with ver referencing latest commit
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          docker buildx imagetools create \
+            -t ${{ steps.tag_ver.outputs.tag }}-arm64 \
+            ${{ steps.tag_head.outputs.tag }}-arm64
+
+  build_and_push_devcontainer_multi_arch:
+    name: Build and push Docker image devcontainer (multi-arch)
+    runs-on: ubuntu-22.04
+    needs: [build_and_push_devcontainer_amd64, build_and_push_devcontainer_arm64]
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Filter changes
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            src:
+              - 'OpamBase/**'
+              - 'DevContainer/**'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate package repo name
+        id: ghcr_repo
+        run: echo "path=ghcr.io/${{ github.repository_owner }}/devcontainer" | tr '[:upper:]' '[:lower:]' >> $GITHUB_OUTPUT
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ steps.ghcr_repo.outputs.path }}
+
+      - name: Get current commit SHA short
+        id: commit_sha
+        run: echo "short=$(git rev-parse --short HEAD)" | tr '[:upper:]' '[:lower:]' >> $GITHUB_OUTPUT
+
+      - name: Manually generate sha tag
+        id: tag_sha
+        run: echo "tag=${{ steps.ghcr_repo.outputs.path }}:${{ steps.commit_sha.outputs.short }}" >> $GITHUB_OUTPUT
+
+      - name: Manually generate head tag
+        id: tag_head
+        run: echo "tag=${{ steps.ghcr_repo.outputs.path }}:head" >> $GITHUB_OUTPUT
+
+      - name: Manually generate latest tag
+        id: tag_latest
+        run: echo "tag=${{ steps.ghcr_repo.outputs.path }}:latest" >> $GITHUB_OUTPUT
+
+      - name: Manually generate ver tag
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        id: tag_ver
+        run: echo "tag=${{ steps.ghcr_repo.outputs.path }}:${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create and push a multi-arch manifest (sha)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') && steps.changes.outputs.src == 'true' }}
+        run: |
+          docker buildx imagetools create \
+            -t ${{ steps.tag_sha.outputs.tag }} \
+            ${{ steps.tag_sha.outputs.tag }}-amd64 \
+            ${{ steps.tag_sha.outputs.tag }}-arm64
+
+      - name: Create and push a multi-arch manifest (head)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') && steps.changes.outputs.src == 'true' }}
+        run: |
+          docker buildx imagetools create \
+            -t ${{ steps.tag_head.outputs.tag }} \
+            ${{ steps.tag_head.outputs.tag }}-amd64 \
+            ${{ steps.tag_head.outputs.tag }}-arm64
+
+      - name: Create and push a multi-arch manifest (tag)
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          docker buildx imagetools create \
+            -t ${{ steps.tag_ver.outputs.tag }} \
+            ${{ steps.tag_ver.outputs.tag }}-amd64 \
+            ${{ steps.tag_ver.outputs.tag }}-arm64
+
+      - name: Create and push a multi-arch manifest (latest)
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          docker buildx imagetools create \
+            -t ${{ steps.tag_latest.outputs.tag }} \
+            ${{ steps.tag_ver.outputs.tag }}
+
+
+
+
+
+
+
+
+
+  build_and_push_coq_gradescope_amd64:
+    name: Build and push Docker image coq gradescope (amd64)
+    runs-on: ubuntu-22.04
+    needs: [build_and_push_opam_base_amd64]
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Filter changes
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            src:
+              - 'OpamBase/**'
+              - 'RunnerContainer/**'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate package repo name
+        id: ghcr_repo
+        run: echo "path=ghcr.io/${{ github.repository_owner }}/coq-gradescope" | tr '[:upper:]' '[:lower:]' >> $GITHUB_OUTPUT
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ steps.ghcr_repo.outputs.path }}
+
+      - name: Get current commit SHA short
+        id: commit_sha
+        run: echo "short=$(git rev-parse --short HEAD)" | tr '[:upper:]' '[:lower:]' >> $GITHUB_OUTPUT
+
+      - name: Manually generate sha tag
+        id: tag_sha
+        run: echo "tag=${{ steps.ghcr_repo.outputs.path }}:${{ steps.commit_sha.outputs.short }}" >> $GITHUB_OUTPUT
+
+      - name: Manually generate head tag
+        id: tag_head
+        run: echo "tag=${{ steps.ghcr_repo.outputs.path }}:head" >> $GITHUB_OUTPUT
+
+      - name: Manually generate ver tag
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        id: tag_ver
+        run: echo "tag=${{ steps.ghcr_repo.outputs.path }}:${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker images
+        uses: docker/build-push-action@v5
+        if: ${{ !startsWith(github.ref, 'refs/tags/') && steps.changes.outputs.src == 'true' }}
+        with:
+          context: ./RunnerContainer
+          platforms: linux/amd64
+          build-args: |
+            BASE_IMAGE=ghcr.io/ucsc-cse-210a/opam-base:head-gradescope
+          push: true
+          tags: |
+            ${{ steps.tag_sha.outputs.tag }}
+            ${{ steps.tag_head.outputs.tag }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Create and push a manifest with ver referencing latest commit
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          docker buildx imagetools create \
+            -t ${{ steps.tag_ver.outputs.tag }} \
+            ${{ steps.tag_head.outputs.tag }}
+
